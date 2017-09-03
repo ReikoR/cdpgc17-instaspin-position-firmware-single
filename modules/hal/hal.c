@@ -1783,8 +1783,8 @@ void HAL_setupSciB(HAL_Handle handle)
     SCI_disableParity(obj->sciBHandle);
     SCI_setNumStopBits(obj->sciBHandle,SCI_NumStopBits_One);
     SCI_setCharLength(obj->sciBHandle,SCI_CharLength_8_Bits);
-    // set baud rate to 115200
-    SCI_setBaudRate(obj->sciBHandle,(SCI_BaudRate_e)(0x0061));
+    // set baud rate to 150000
+    SCI_setBaudRate(obj->sciBHandle,(SCI_BaudRate_e)(74));
     SCI_setPriority(obj->sciBHandle,SCI_Priority_FreeRun);
     SCI_enable(obj->sciBHandle);
     return;
