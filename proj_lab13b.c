@@ -64,6 +64,10 @@
 
 #define LED_BLINK_FREQ_Hz   5
 
+#define ST_SPEED_PU_PER_Hz (USER_MOTOR_NUM_POLE_PAIRS / USER_IQ_FULL_SCALE_FREQ_Hz)
+
+#define ST_SPEED_Hz_PER_PU (USER_IQ_FULL_SCALE_FREQ_Hz / USER_MOTOR_NUM_POLE_PAIRS)
+
 
 // **************************************************************************
 // the globals
@@ -125,6 +129,42 @@ _iq gFlux_pu_to_VpHz_sf;
 _iq gTorque_Ls_Id_Iq_pu_to_Nm_sf;
 
 _iq gTorque_Flux_Iq_pu_to_Nm_sf;
+
+uint16_t dataRx;
+uint16_t success;
+
+char buf[16];
+char returnBuf[32];
+int counter = 0;
+int rxIntCounter = 0;
+int commandReceived = 0;
+int commandStart = 0;
+int sendFeedback = 0;
+
+void serialWrite(char *sendData, int length);
+
+_iq posRef = _IQ(0.0);
+_iq transitionPosRef = _IQ(0.0);
+_iq posError = _IQ(0.0);
+int32_t posRefInt = 0;
+_iq posRefFrac = _IQ(0.0);
+int32_t transitionPosRefInt = 0;
+_iq transitionPosRefFrac = _IQ(0.0);
+int32_t transitionPosRefRolloverCount = 0;
+_iq speedRef_rps = _IQ(0.0);
+
+_iq maxSpeed_rps = _IQ(1.0);
+_iq minSpeed_rps = _IQ(0.01);
+_iq acc_rpsps = _IQ(0.1);
+_iq dec_rpsps = _IQ(0.1);
+_iq posDiff = _IQ(0.0);
+_iq requiredDeceleration_rpsps = _IQ(0.0);
+
+_iq posSampleTime_sec = _IQ24(ST_SAMPLE_TIME);
+
+_iq prevSpeed_rps = _IQ(0.0);
+_iq currentAcc_rpsps = _IQ(0.0);
+
 
 // **************************************************************************
 // the functions
@@ -250,7 +290,7 @@ void main(void)
   // setup the SpinTAC Components
   ST_setupPosConv(stHandle);
   ST_setupPosCtl(stHandle);
-  ST_setupPosMove(stHandle);
+  //ST_setupPosMove(stHandle);
 
 #ifdef DRV8301_SPI
   // turn on the DRV8301 if present
@@ -286,8 +326,7 @@ void main(void)
     CTRL_setFlag_enableSpeedCtrl(ctrlHandle, false);
 
     // loop while the enable system flag is true
-    while(gMotorVars.Flag_enableSys)
-      {
+    while(gMotorVars.Flag_enableSys) {
         CTRL_Obj *obj = (CTRL_Obj *)ctrlHandle;
         ST_Obj *stObj = (ST_Obj *)stHandle;
 
@@ -384,6 +423,7 @@ void main(void)
           }
 
 
+
         if(EST_isMotorIdentified(obj->estHandle))
           {
             // set the current ramp
@@ -391,7 +431,7 @@ void main(void)
             gMotorVars.Flag_MotorIdentified = true;
 
             // set the speed reference
-            CTRL_setSpd_ref_krpm(ctrlHandle,STPOSMOVE_getVelocityReference(stObj->posMoveHandle));
+            //CTRL_setSpd_ref_krpm(ctrlHandle,STPOSMOVE_getVelocityReference(stObj->posMoveHandle));
 
             // set the speed acceleration
             CTRL_setMaxAccel_pu(ctrlHandle,_IQmpy(MAX_ACCEL_KRPMPS_SF,gMotorVars.MaxAccel_krpmps));
@@ -404,7 +444,7 @@ void main(void)
             	// if the system is not running, disable SpinTAC Position Controller
         	    STPOSCTL_setEnable(stObj->posCtlHandle, false);
 			    // If motor is not running, feed the position feedback into SpinTAC Position Move
-				STPOSMOVE_setPositionStart_mrev(stObj->posMoveHandle, STPOSCONV_getPosition_mrev(stObj->posConvHandle));
+				//STPOSMOVE_setPositionStart_mrev(stObj->posMoveHandle, STPOSCONV_getPosition_mrev(stObj->posConvHandle));
             }
 
             if(Flag_Latch_softwareUpdate)
@@ -445,6 +485,28 @@ void main(void)
             updateGlobalVariables_motor(ctrlHandle, stHandle);
           }
 
+        if (sendFeedback) {
+            sendFeedback = 0;
+
+            returnBuf[0] = '<';
+
+            long motorPosition = stObj->pos.conv.Pos_mrev;
+            long motorSpeed = _IQmpy(stObj->pos.conv.Vel, _IQ(ST_SPEED_Hz_PER_PU));
+
+            returnBuf[1] = motorPosition;
+            returnBuf[2] = motorPosition >> 8;
+            returnBuf[3] = motorPosition >> 16;
+            returnBuf[4] = motorPosition >> 24;
+
+            returnBuf[5] = motorSpeed;
+            returnBuf[6] = motorSpeed >> 8;
+            returnBuf[7] = motorSpeed >> 16;
+            returnBuf[8] = motorSpeed >> 24;
+
+            returnBuf[9] = '>';
+
+            serialWrite(returnBuf, 10);
+        }
 
         // update Kp and Ki gains
         updateKpKiGains(ctrlHandle);
@@ -484,7 +546,7 @@ void main(void)
     // setup the SpinTAC Components
     ST_setupPosConv(stHandle);
     ST_setupPosCtl(stHandle);
-    ST_setupPosMove(stHandle);
+    //ST_setupPosMove(stHandle);
 
   } // end of for(;;) loop
 
@@ -520,7 +582,8 @@ interrupt void mainISR(void)
   // Run the SpinTAC Components
   if(stCnt++ >= ISR_TICKS_PER_SPINTAC_TICK) {
 	  ST_runPosConv(stHandle, encHandle, ctrlHandle);
-	  ST_runPosMove(stHandle);
+      //ST_runPosMove(stHandle);
+      calcTransitionPosRef(stHandle);
 	  ST_runPosCtl(stHandle, ctrlHandle);
 	  stCnt = 1;
   }
@@ -556,6 +619,73 @@ interrupt void mainISR(void)
 
   return;
 } // end of mainISR() function
+
+
+//! \brief the ISR for SCI-B receive interrupt
+interrupt void sciBRxISR(void)
+{
+    HAL_Obj *obj = (HAL_Obj *)halHandle;
+    //ST_Obj *stObj = (ST_Obj *)stHandle;
+
+    dataRx = SCI_getDataNonBlocking(halHandle->sciBHandle, &success);
+    //success = SCI_putDataNonBlocking(halHandle->sciBHandle, dataRx);
+
+    // acknowledge interrupt from SCI group so that SCI interrupt
+    // is not received twice
+    PIE_clearInt(obj->pieHandle,PIE_GroupNumber_9);
+
+    /*if (dataRx == '1') {
+        STPOSMOVE_setEnable(stObj->posMoveHandle, false);
+    } else if (dataRx == '2') {
+        STPOSMOVE_setEnable(stObj->posMoveHandle, false);
+        STPOSMOVE_setPositionStep_mrev(stObj->posMoveHandle, 1,  _IQ(0));
+        STPOSMOVE_setEnable(stObj->posMoveHandle, true);
+    } else if (dataRx == '3') {
+        STPOSMOVE_setEnable(stObj->posMoveHandle, false);
+        STPOSMOVE_setPositionStep_mrev(stObj->posMoveHandle, -1,  _IQ(0));
+        STPOSMOVE_setEnable(stObj->posMoveHandle, true);
+    }*/
+
+    /*if (dataRx == '1') {
+        posRef = _IQ(0.0);
+    } else if (dataRx == '2') {
+        posRef = _IQ(0.5);
+    } else if (dataRx == '3') {
+        posRef = _IQ(-0.5);
+    }*/
+
+    if (counter < 10) {
+        if (counter == 0) {
+            if (dataRx == '<') {
+                buf[counter] = dataRx;
+                counter++;
+            } else {
+                counter = 0;
+            }
+        } else if (counter >= 1 && counter <= 8) {
+            buf[counter] = dataRx;
+            counter++;
+        } else if (counter == 9) {
+            if (dataRx == '>') {
+                buf[counter] = dataRx;
+                counter++;
+
+                posRef = ((long)buf[1]) | ((long)buf[2] << 8) | ((long)buf[3] << 16) | ((long)buf[4] << 24);
+                maxSpeed_rps = ((long)buf[5]) | ((long)buf[6] << 8) | ((long)buf[7] << 16) | ((long)buf[8] << 24);
+
+                counter = 0;
+
+                sendFeedback = 1;
+
+            } else {
+                counter = 0;
+            }
+        } else {
+            counter = 0;
+        }
+    }
+
+} // end of sciBRxISR() function
 
 
 void updateGlobalVariables_motor(CTRL_Handle handle, ST_Handle sthandle)
@@ -680,6 +810,157 @@ void ST_runPosConv(ST_Handle handle, ENC_Handle encHandle, CTRL_Handle ctrlHandl
 
 void ST_runPosCtl(ST_Handle handle, CTRL_Handle ctrlHandle)
 {
+    ST_Obj *stObj = (ST_Obj *)handle;
+
+    _iq normalizedTransitionPosRef = transitionPosRef;
+
+    while (normalizedTransitionPosRef > _IQ(10.0)) {
+        normalizedTransitionPosRef -= _IQ(20.0);
+    }
+
+    while (normalizedTransitionPosRef < _IQ(-10.0)) {
+        normalizedTransitionPosRef += _IQ(20.0);
+    }
+
+    // provide the updated references to the SpinTAC Position Control
+    STPOSCTL_setPositionReference_mrev(stObj->posCtlHandle, normalizedTransitionPosRef);
+    //STPOSCTL_setVelocityReference(stObj->posCtlHandle, _IQ(0.0));
+    //STPOSCTL_setAccelerationReference(stObj->posCtlHandle, _IQ(0.0));
+    STPOSCTL_setVelocityReference(stObj->posCtlHandle, _IQmpy(speedRef_rps, _IQ(ST_SPEED_PU_PER_Hz)));
+    STPOSCTL_setAccelerationReference(stObj->posCtlHandle, _IQmpy(currentAcc_rpsps, _IQ(ST_SPEED_PU_PER_Hz)));
+
+    // provide the feedback to the SpinTAC Position Control
+    STPOSCTL_setPositionFeedback_mrev(stObj->posCtlHandle, STPOSCONV_getPosition_mrev(stObj->posConvHandle));
+
+    // Run SpinTAC Position Control
+    STPOSCTL_run(stObj->posCtlHandle);
+
+    // Provide SpinTAC Position Control Torque Output to the FOC
+    CTRL_setIq_ref_pu(ctrlHandle, STPOSCTL_getTorqueReference(stObj->posCtlHandle));
+}
+
+/*void ST_runPosCtl_(ST_Handle handle, CTRL_Handle ctrlHandle)
+{
+    ST_Obj *stObj = (ST_Obj *)handle;
+
+    // provide the updated references to the SpinTAC Position Control
+    STPOSCTL_setPositionReference_mrev(stObj->posCtlHandle, STPOSMOVE_getPositionReference_mrev(stObj->posMoveHandle));
+    STPOSCTL_setVelocityReference(stObj->posCtlHandle, STPOSMOVE_getVelocityReference(stObj->posMoveHandle));
+    STPOSCTL_setAccelerationReference(stObj->posCtlHandle, STPOSMOVE_getAccelerationReference(stObj->posMoveHandle));
+    // provide the feedback to the SpinTAC Position Control
+    STPOSCTL_setPositionFeedback_mrev(stObj->posCtlHandle, STPOSCONV_getPosition_mrev(stObj->posConvHandle));
+
+    // Run SpinTAC Position Control
+    STPOSCTL_run(stObj->posCtlHandle);
+
+    // Provide SpinTAC Position Control Torque Output to the FOC
+    CTRL_setIq_ref_pu(ctrlHandle, STPOSCTL_getTorqueReference(stObj->posCtlHandle));
+}*/
+
+_iq posRefError(int32_t currentPosRefInt, _iq currentPosRefFrac, int32_t goalPosRefInt, _iq goalPosRefFrac) {
+    return (_IQ(goalPosRefInt) - _IQ(currentPosRefInt)) + (goalPosRefFrac - currentPosRefFrac);
+}
+
+void calcTransitionPosRef(ST_Handle handle) {
+    //ST_Obj *stObj = (ST_Obj *)handle;
+
+    //_iq actualPos = stObj->pos.conv.Pos_mrev;
+
+    // Check if can keep up
+    /*if (_IQabs(actualPos - transitionPosRef) > _IQ(0.5)) {
+        return;
+    }*/
+
+    //ST_MREV_ROLLOVER
+
+    prevSpeed_rps = speedRef_rps;
+
+    posError = posRefError(transitionPosRefInt, transitionPosRefFrac, posRefInt, posRefFrac);
+
+    if (transitionPosRef < posRef) {
+        posDiff = posRef - transitionPosRef;
+
+        requiredDeceleration_rpsps = _IQdiv(_IQmpy(speedRef_rps, speedRef_rps), _IQmpy(posDiff, _IQ(2.0)));
+
+        if (requiredDeceleration_rpsps > dec_rpsps) {
+            speedRef_rps -= _IQmpy(requiredDeceleration_rpsps, posSampleTime_sec);
+
+            if (speedRef_rps < minSpeed_rps) {
+                speedRef_rps = minSpeed_rps;
+            }
+        } else if (speedRef_rps < maxSpeed_rps) {
+            speedRef_rps += _IQmpy(acc_rpsps, posSampleTime_sec);
+
+            if (speedRef_rps > maxSpeed_rps) {
+                speedRef_rps = maxSpeed_rps;
+            }
+        } else if (speedRef_rps > maxSpeed_rps) {
+            speedRef_rps -= _IQmpy(dec_rpsps, posSampleTime_sec);
+
+            if (speedRef_rps < maxSpeed_rps) {
+                speedRef_rps = maxSpeed_rps;
+            }
+        }
+
+        transitionPosRef += _IQmpy(speedRef_rps, posSampleTime_sec);
+
+        if (transitionPosRef > posRef) {
+            transitionPosRef = posRef;
+            speedRef_rps = _IQ(0.0);
+        }
+
+    } else if (transitionPosRef > posRef) {
+        posDiff = transitionPosRef - posRef;
+
+        requiredDeceleration_rpsps = _IQdiv(_IQmpy(speedRef_rps, speedRef_rps), _IQmpy(posDiff, _IQ(2.0)));
+
+        if (requiredDeceleration_rpsps > dec_rpsps) {
+            speedRef_rps += _IQmpy(requiredDeceleration_rpsps, posSampleTime_sec);
+
+            if (speedRef_rps > -minSpeed_rps) {
+                speedRef_rps = -minSpeed_rps;
+            }
+        } else if (speedRef_rps > -maxSpeed_rps) {
+            speedRef_rps -= _IQmpy(acc_rpsps, posSampleTime_sec);
+
+            if (speedRef_rps < -maxSpeed_rps) {
+                speedRef_rps = -maxSpeed_rps;
+            }
+        } else if (speedRef_rps < -maxSpeed_rps) {
+            speedRef_rps += _IQmpy(dec_rpsps, posSampleTime_sec);
+
+            if (speedRef_rps > -maxSpeed_rps) {
+                speedRef_rps = -maxSpeed_rps;
+            }
+        }
+
+        transitionPosRef += _IQmpy(speedRef_rps, posSampleTime_sec);
+
+        if (transitionPosRef < posRef) {
+            transitionPosRef = posRef;
+            speedRef_rps = _IQ(0.0);
+        }
+    }
+
+    currentAcc_rpsps = _IQmpy(_IQabs(speedRef_rps) - _IQabs(prevSpeed_rps), posSampleTime_sec);
+}
+
+void serialWrite(char *sendData, int length) {
+    int i = 0;
+
+    while (i < length) {
+        //SCI_putDataNonBlocking(halHandle->sciBHandle, sendData[i]);
+        //i++;
+
+        if (SCI_txReady(halHandle->sciBHandle)) {
+            SCI_write(halHandle->sciBHandle, sendData[i]);
+            i++;
+        }
+    }
+}
+
+/*void ST_runPosCtl(ST_Handle handle, CTRL_Handle ctrlHandle)
+{
 	ST_Obj *stObj = (ST_Obj *)handle;
 
 	// provide the updated references to the SpinTAC Position Control
@@ -694,9 +975,9 @@ void ST_runPosCtl(ST_Handle handle, CTRL_Handle ctrlHandle)
 	
 	// Provide SpinTAC Position Control Torque Output to the FOC
 	CTRL_setIq_ref_pu(ctrlHandle, STPOSCTL_getTorqueReference(stObj->posCtlHandle));
-}
+}*/
 
-void ST_runPosMove(ST_Handle handle)
+/*void ST_runPosMove(ST_Handle handle)
 {
 	ST_Obj *stObj = (ST_Obj *)handle;
 
@@ -719,7 +1000,7 @@ void ST_runPosMove(ST_Handle handle)
 	}
 
 	STPOSMOVE_run(stObj->posMoveHandle);
-}
+}*/
 
 
 //@} //defgroup

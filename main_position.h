@@ -229,6 +229,9 @@ void updateKpKiGains(CTRL_Handle handle);
 interrupt void sciBRxISR(void);
 
 
+void calcTransitionPosRef(ST_Handle handle);
+
+
 //@} //defgroup
 #endif // end of _MAIN_POS_H_ definition
 
