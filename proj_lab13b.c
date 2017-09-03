@@ -211,6 +211,10 @@ void main(void)
   HAL_enableAdcInts(halHandle);
 
 
+  // enable the SCI interrupts
+  HAL_enableSciInts(halHandle);
+
+
   // enable global interrupts
   HAL_enableGlobalInts(halHandle);
 

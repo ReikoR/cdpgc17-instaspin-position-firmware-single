@@ -51,6 +51,7 @@
 #include "drivers/pwmdac/pwmdac.h"
 #include "drivers/pwr/pwr.h"
 #include "drivers/spi/spi.h"
+#include "drivers/sci/sci.h"
 #include "drivers/timer/timer.h"
 #include "drivers/wdog/wdog.h"
 #include "drivers/drvic/drv8305.h"
@@ -180,6 +181,9 @@ typedef struct _HAL_Obj_
 #ifdef QEP
   QEP_Handle    qepHandle[2];        //!< the QEP handles
 #endif
+
+  SCI_Handle    sciAHandle;
+  SCI_Handle    sciBHandle;
 
 } HAL_Obj;
 

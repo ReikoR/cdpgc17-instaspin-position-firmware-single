@@ -224,6 +224,9 @@ void updateGlobalVariables_motor(CTRL_Handle handle, ST_Handle stHandle);
 void updateKpKiGains(CTRL_Handle handle);
 
 
+//! \brief The SCI-B receive interrupt service (ISR) routine
+//!
+interrupt void sciBRxISR(void);
 
 
 //@} //defgroup
