@@ -143,27 +143,21 @@ int sendFeedback = 0;
 
 void serialWrite(char *sendData, int length);
 
-_iq posRef = _IQ(0.0);
-_iq transitionPosRef = _IQ(0.0);
-_iq posError = _IQ(0.0);
-int32_t posRefInt = 0;
-_iq posRefFrac = _IQ(0.0);
-int32_t transitionPosRefInt = 0;
-_iq transitionPosRefFrac = _IQ(0.0);
-int32_t transitionPosRefRolloverCount = 0;
-_iq speedRef_rps = _IQ(0.0);
+_iq20 posRef = _IQ20(0.0);
+_iq20 transitionPosRef = _IQ20(0.0);
+_iq20 speedRef_rps = _IQ20(0.0);
 
-_iq maxSpeed_rps = _IQ(1.0);
-_iq minSpeed_rps = _IQ(0.01);
-_iq acc_rpsps = _IQ(0.1);
-_iq dec_rpsps = _IQ(0.1);
-_iq posDiff = _IQ(0.0);
-_iq requiredDeceleration_rpsps = _IQ(0.0);
+_iq20 maxSpeed_rps = _IQ20(1.0);
+_iq20 minSpeed_rps = _IQ20(0.01);
+_iq20 acc_rpsps = _IQ20(0.1);
+_iq20 dec_rpsps = _IQ20(0.1);
+_iq20 posDiff = _IQ20(0.0);
+_iq20 requiredDeceleration_rpsps = _IQ20(0.0);
 
-_iq posSampleTime_sec = _IQ24(ST_SAMPLE_TIME);
+_iq20 posSampleTime_sec = _IQ20(ST_SAMPLE_TIME);
 
-_iq prevSpeed_rps = _IQ(0.0);
-_iq currentAcc_rpsps = _IQ(0.0);
+_iq20 prevSpeed_rps = _IQ20(0.0);
+_iq20 currentAcc_rpsps = _IQ20(0.0);
 
 
 // **************************************************************************
@@ -490,8 +484,8 @@ void main(void)
 
             returnBuf[0] = '<';
 
-            long motorPosition = stObj->pos.conv.Pos_mrev;
-            long motorSpeed = _IQmpy(stObj->pos.conv.Vel, _IQ(ST_SPEED_Hz_PER_PU));
+            long motorPosition = _IQ20mpyI32(_IQ20(20.0), stObj->pos.conv.PosROCounts) + _IQtoIQ20(stObj->pos.conv.Pos_mrev);
+            long motorSpeed = _IQ20mpy(_IQtoIQ20(STPOSCONV_getVelocityFiltered(stObj->posConvHandle)), _IQ20(ST_SPEED_Hz_PER_PU));
 
             returnBuf[1] = motorPosition;
             returnBuf[2] = motorPosition >> 8;
@@ -633,26 +627,6 @@ interrupt void sciBRxISR(void)
     // acknowledge interrupt from SCI group so that SCI interrupt
     // is not received twice
     PIE_clearInt(obj->pieHandle,PIE_GroupNumber_9);
-
-    /*if (dataRx == '1') {
-        STPOSMOVE_setEnable(stObj->posMoveHandle, false);
-    } else if (dataRx == '2') {
-        STPOSMOVE_setEnable(stObj->posMoveHandle, false);
-        STPOSMOVE_setPositionStep_mrev(stObj->posMoveHandle, 1,  _IQ(0));
-        STPOSMOVE_setEnable(stObj->posMoveHandle, true);
-    } else if (dataRx == '3') {
-        STPOSMOVE_setEnable(stObj->posMoveHandle, false);
-        STPOSMOVE_setPositionStep_mrev(stObj->posMoveHandle, -1,  _IQ(0));
-        STPOSMOVE_setEnable(stObj->posMoveHandle, true);
-    }*/
-
-    /*if (dataRx == '1') {
-        posRef = _IQ(0.0);
-    } else if (dataRx == '2') {
-        posRef = _IQ(0.5);
-    } else if (dataRx == '3') {
-        posRef = _IQ(-0.5);
-    }*/
 
     if (counter < 10) {
         if (counter == 0) {
@@ -812,22 +786,22 @@ void ST_runPosCtl(ST_Handle handle, CTRL_Handle ctrlHandle)
 {
     ST_Obj *stObj = (ST_Obj *)handle;
 
-    _iq normalizedTransitionPosRef = transitionPosRef;
+    _iq20 normalizedTransitionPosRef = transitionPosRef;
 
-    while (normalizedTransitionPosRef > _IQ(10.0)) {
-        normalizedTransitionPosRef -= _IQ(20.0);
+    while (normalizedTransitionPosRef > _IQ20(10.0)) {
+        normalizedTransitionPosRef -= _IQ20(20.0);
     }
 
-    while (normalizedTransitionPosRef < _IQ(-10.0)) {
-        normalizedTransitionPosRef += _IQ(20.0);
+    while (normalizedTransitionPosRef < _IQ20(-10.0)) {
+        normalizedTransitionPosRef += _IQ20(20.0);
     }
 
     // provide the updated references to the SpinTAC Position Control
-    STPOSCTL_setPositionReference_mrev(stObj->posCtlHandle, normalizedTransitionPosRef);
+    STPOSCTL_setPositionReference_mrev(stObj->posCtlHandle, _IQ20toIQ(normalizedTransitionPosRef));
     //STPOSCTL_setVelocityReference(stObj->posCtlHandle, _IQ(0.0));
     //STPOSCTL_setAccelerationReference(stObj->posCtlHandle, _IQ(0.0));
-    STPOSCTL_setVelocityReference(stObj->posCtlHandle, _IQmpy(speedRef_rps, _IQ(ST_SPEED_PU_PER_Hz)));
-    STPOSCTL_setAccelerationReference(stObj->posCtlHandle, _IQmpy(currentAcc_rpsps, _IQ(ST_SPEED_PU_PER_Hz)));
+    STPOSCTL_setVelocityReference(stObj->posCtlHandle, _IQ20mpy(speedRef_rps, _IQ20(ST_SPEED_PU_PER_Hz)));
+    STPOSCTL_setAccelerationReference(stObj->posCtlHandle, _IQ20mpy(currentAcc_rpsps, _IQ20(ST_SPEED_PU_PER_Hz)));
 
     // provide the feedback to the SpinTAC Position Control
     STPOSCTL_setPositionFeedback_mrev(stObj->posCtlHandle, STPOSCONV_getPosition_mrev(stObj->posConvHandle));
@@ -857,92 +831,84 @@ void ST_runPosCtl(ST_Handle handle, CTRL_Handle ctrlHandle)
     CTRL_setIq_ref_pu(ctrlHandle, STPOSCTL_getTorqueReference(stObj->posCtlHandle));
 }*/
 
-_iq posRefError(int32_t currentPosRefInt, _iq currentPosRefFrac, int32_t goalPosRefInt, _iq goalPosRefFrac) {
-    return (_IQ(goalPosRefInt) - _IQ(currentPosRefInt)) + (goalPosRefFrac - currentPosRefFrac);
-}
-
 void calcTransitionPosRef(ST_Handle handle) {
     //ST_Obj *stObj = (ST_Obj *)handle;
 
     //_iq actualPos = stObj->pos.conv.Pos_mrev;
 
     // Check if can keep up
-    /*if (_IQabs(actualPos - transitionPosRef) > _IQ(0.5)) {
+    /*if (_IQ20abs(actualPos - transitionPosRef) > _IQ20(0.5)) {
         return;
     }*/
 
-    //ST_MREV_ROLLOVER
-
     prevSpeed_rps = speedRef_rps;
-
-    posError = posRefError(transitionPosRefInt, transitionPosRefFrac, posRefInt, posRefFrac);
 
     if (transitionPosRef < posRef) {
         posDiff = posRef - transitionPosRef;
 
-        requiredDeceleration_rpsps = _IQdiv(_IQmpy(speedRef_rps, speedRef_rps), _IQmpy(posDiff, _IQ(2.0)));
+        requiredDeceleration_rpsps = _IQ20div(_IQ20mpy(speedRef_rps, speedRef_rps), _IQ20mpy(posDiff, _IQ20(2.0)));
 
         if (requiredDeceleration_rpsps > dec_rpsps) {
-            speedRef_rps -= _IQmpy(requiredDeceleration_rpsps, posSampleTime_sec);
+            speedRef_rps -= _IQ20mpy(requiredDeceleration_rpsps, posSampleTime_sec);
 
             if (speedRef_rps < minSpeed_rps) {
                 speedRef_rps = minSpeed_rps;
             }
         } else if (speedRef_rps < maxSpeed_rps) {
-            speedRef_rps += _IQmpy(acc_rpsps, posSampleTime_sec);
+            speedRef_rps += _IQ20mpy(acc_rpsps, posSampleTime_sec);
 
             if (speedRef_rps > maxSpeed_rps) {
                 speedRef_rps = maxSpeed_rps;
             }
         } else if (speedRef_rps > maxSpeed_rps) {
-            speedRef_rps -= _IQmpy(dec_rpsps, posSampleTime_sec);
+            speedRef_rps -= _IQ20mpy(dec_rpsps, posSampleTime_sec);
 
             if (speedRef_rps < maxSpeed_rps) {
                 speedRef_rps = maxSpeed_rps;
             }
         }
 
-        transitionPosRef += _IQmpy(speedRef_rps, posSampleTime_sec);
+        transitionPosRef += _IQ20mpy(speedRef_rps, posSampleTime_sec);
 
         if (transitionPosRef > posRef) {
             transitionPosRef = posRef;
-            speedRef_rps = _IQ(0.0);
+            speedRef_rps = _IQ20(0.0);
         }
 
     } else if (transitionPosRef > posRef) {
         posDiff = transitionPosRef - posRef;
 
-        requiredDeceleration_rpsps = _IQdiv(_IQmpy(speedRef_rps, speedRef_rps), _IQmpy(posDiff, _IQ(2.0)));
+        requiredDeceleration_rpsps = _IQ20div(_IQ20mpy(speedRef_rps, speedRef_rps), _IQ20mpy(posDiff, _IQ20(2.0)));
 
         if (requiredDeceleration_rpsps > dec_rpsps) {
-            speedRef_rps += _IQmpy(requiredDeceleration_rpsps, posSampleTime_sec);
+            speedRef_rps += _IQ20mpy(requiredDeceleration_rpsps, posSampleTime_sec);
 
             if (speedRef_rps > -minSpeed_rps) {
                 speedRef_rps = -minSpeed_rps;
             }
         } else if (speedRef_rps > -maxSpeed_rps) {
-            speedRef_rps -= _IQmpy(acc_rpsps, posSampleTime_sec);
+            speedRef_rps -= _IQ20mpy(acc_rpsps, posSampleTime_sec);
 
             if (speedRef_rps < -maxSpeed_rps) {
                 speedRef_rps = -maxSpeed_rps;
             }
         } else if (speedRef_rps < -maxSpeed_rps) {
-            speedRef_rps += _IQmpy(dec_rpsps, posSampleTime_sec);
+            speedRef_rps += _IQ20mpy(dec_rpsps, posSampleTime_sec);
 
             if (speedRef_rps > -maxSpeed_rps) {
                 speedRef_rps = -maxSpeed_rps;
             }
         }
 
-        transitionPosRef += _IQmpy(speedRef_rps, posSampleTime_sec);
+        transitionPosRef += _IQ20mpy(speedRef_rps, posSampleTime_sec);
 
         if (transitionPosRef < posRef) {
             transitionPosRef = posRef;
-            speedRef_rps = _IQ(0.0);
+            speedRef_rps = _IQ20(0.0);
         }
     }
 
-    currentAcc_rpsps = _IQmpy(_IQabs(speedRef_rps) - _IQabs(prevSpeed_rps), posSampleTime_sec);
+    currentAcc_rpsps = _IQ20mpy(_IQ20abs(speedRef_rps) - _IQ20abs(prevSpeed_rps), posSampleTime_sec);
 }
 
 void serialWrite(char *sendData, int length) {
