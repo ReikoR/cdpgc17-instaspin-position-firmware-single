@@ -206,7 +206,7 @@ extern "C" {
 //! \brief This value should be determined by putting SpinTAC Control through a tuning process
 //! \brief If a Bandwidth Scale value has been previously identified
 //! \brief multiply it by 20 to convert into Bandwidth
-#define USER_SYSTEM_BANDWIDTH      (20.0)
+#define USER_SYSTEM_BANDWIDTH      (80.0)
 
 //! \brief Define each motor with a unique name and ID number
 // BLDC & SMPM motors
@@ -214,6 +214,9 @@ extern "C" {
 #define Anaheim_BLY172S             102
 #define Teknic_M2310PLN04K          104
 #define aerodrive_5055_280kv        120
+#define multistar_4108_380kv        121
+#define multistar_elite_5010_274kv  122
+#define aerodrive_4250_350kv        123
 
 // IPM motors
 // If user provides separate Ls-d, Ls-q
@@ -231,7 +234,10 @@ extern "C" {
 //#define USER_MOTOR Teknic_M2310PLN04K
 //#define USER_MOTOR Belt_Drive_Washer_IPM
 //#define USER_MOTOR Marathon_5K33GN2A
-#define USER_MOTOR aerodrive_5055_280kv
+//#define USER_MOTOR aerodrive_5055_280kv
+//#define USER_MOTOR multistar_4108_380kv
+//#define USER_MOTOR multistar_elite_5010_274kv
+#define USER_MOTOR aerodrive_4250_350kv
 
 
 #if (USER_MOTOR == Estun_EMJ_04APB22)                  // Name must match the motor #define
@@ -334,9 +340,63 @@ extern "C" {
 #define USER_MOTOR_MAX_CURRENT          (20.0)
 #define USER_MOTOR_FLUX_EST_FREQ_Hz     (100.0)
 #define USER_MOTOR_ENCODER_LINES        (2048.0)
-#define USER_MOTOR_MAX_SPEED_KRPM       (1.0)
-#define USER_SYSTEM_INERTIA             (10.0)
-#define USER_SYSTEM_FRICTION            (40.0)
+#define USER_MOTOR_MAX_SPEED_KRPM       (7.0)
+#define USER_SYSTEM_INERTIA             (10)
+#define USER_SYSTEM_FRICTION            (40)
+
+#elif (USER_MOTOR == multistar_4108_380kv)
+#define USER_MOTOR_TYPE                 MOTOR_Type_Pm
+#define USER_MOTOR_NUM_POLE_PAIRS       (11)
+#define USER_MOTOR_Rr                   (NULL)
+#define USER_MOTOR_Rs                   (0.1)
+#define USER_MOTOR_Ls_d                 (2.0e-05)
+#define USER_MOTOR_Ls_q                 (2.0e-05)
+#define USER_MOTOR_RATED_FLUX           (0.00903755706)
+#define USER_MOTOR_MAGNETIZING_CURRENT  (NULL)
+#define USER_MOTOR_RES_EST_CURRENT      (2.0)
+#define USER_MOTOR_IND_EST_CURRENT      (-2.0)
+#define USER_MOTOR_MAX_CURRENT          (20.0)
+#define USER_MOTOR_FLUX_EST_FREQ_Hz     (200.0)
+#define USER_MOTOR_ENCODER_LINES        (2048.0)
+#define USER_MOTOR_MAX_SPEED_KRPM       (4.0)
+#define USER_SYSTEM_INERTIA             (0.6204164624)
+#define USER_SYSTEM_FRICTION            (1.175520003)
+
+#elif (USER_MOTOR == multistar_elite_5010_274kv)
+#define USER_MOTOR_TYPE                 MOTOR_Type_Pm
+#define USER_MOTOR_NUM_POLE_PAIRS       (7)
+#define USER_MOTOR_Rr                   (NULL)
+#define USER_MOTOR_Rs                   (0.0650313497)
+#define USER_MOTOR_Ls_d                 (3.58936559e-05)
+#define USER_MOTOR_Ls_q                 (3.58936559e-05)
+#define USER_MOTOR_RATED_FLUX           (0.0206398275)
+#define USER_MOTOR_MAGNETIZING_CURRENT  (NULL)
+#define USER_MOTOR_RES_EST_CURRENT      (2.0)
+#define USER_MOTOR_IND_EST_CURRENT      (-2.0)
+#define USER_MOTOR_MAX_CURRENT          (20.0)
+#define USER_MOTOR_FLUX_EST_FREQ_Hz     (200.0)
+#define USER_MOTOR_ENCODER_LINES        (2048.0)
+#define USER_MOTOR_MAX_SPEED_KRPM       (4.0)
+#define USER_SYSTEM_INERTIA             (0.1489728689)
+#define USER_SYSTEM_FRICTION            (0.1595329046)
+
+#elif (USER_MOTOR == aerodrive_4250_350kv)
+#define USER_MOTOR_TYPE                 MOTOR_Type_Pm
+#define USER_MOTOR_NUM_POLE_PAIRS       (7)
+#define USER_MOTOR_Rr                   (NULL)
+#define USER_MOTOR_Rs                   (0.0249244906)
+#define USER_MOTOR_Ls_d                 (1.95586745e-05)
+#define USER_MOTOR_Ls_q                 (1.95586745e-05)
+#define USER_MOTOR_RATED_FLUX           (0.0143373376)
+#define USER_MOTOR_MAGNETIZING_CURRENT  (NULL)
+#define USER_MOTOR_RES_EST_CURRENT      (2.0)
+#define USER_MOTOR_IND_EST_CURRENT      (-2.0)
+#define USER_MOTOR_MAX_CURRENT          (20.0)
+#define USER_MOTOR_FLUX_EST_FREQ_Hz     (100.0)
+#define USER_MOTOR_ENCODER_LINES        (2048.0)
+#define USER_MOTOR_MAX_SPEED_KRPM       (4.0)
+#define USER_SYSTEM_INERTIA             (0.168351531)
+#define USER_SYSTEM_FRICTION            (0.7494831681)
 
 #else
 #error No motor type specified
