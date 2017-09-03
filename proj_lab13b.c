@@ -141,9 +141,9 @@ _iq20 transitionPosRef = _IQ20(0.0);
 _iq20 speedRef_rps = _IQ20(0.0);
 
 _iq20 maxSpeed_rps = _IQ20(1.0);
-_iq20 minSpeed_rps = _IQ20(0.01);
-_iq20 acc_rpsps = _IQ20(0.1);
-_iq20 dec_rpsps = _IQ20(0.1);
+_iq20 minSpeed_rps = _IQ20(0.001);
+_iq20 acc_rpsps = _IQ20(100.0);
+_iq20 dec_rpsps = _IQ20(100.0);
 _iq20 posDiff = _IQ20(0.0);
 _iq20 requiredDeceleration_rpsps = _IQ20(0.0);
 
@@ -618,8 +618,10 @@ interrupt void sciBRxISR(void) {
 				buf[counter] = dataRx;
 				counter++;
 
-				posRef = ((long) buf[1]) | ((long) buf[2] << 8) | ((long) buf[3] << 16) | ((long) buf[4] << 24);
-				maxSpeed_rps = ((long) buf[5]) | ((long) buf[6] << 8) | ((long) buf[7] << 16) | ((long) buf[8] << 24);
+				if (gMotorVars.CtrlState == CTRL_State_OnLine) {
+					posRef = ((long) buf[1]) | ((long) buf[2] << 8) | ((long) buf[3] << 16) | ((long) buf[4] << 24);
+					maxSpeed_rps = ((long) buf[5]) | ((long) buf[6] << 8) | ((long) buf[7] << 16) | ((long) buf[8] << 24);
+				}
 
 				counter = 0;
 
@@ -800,16 +802,17 @@ void ST_runPosCtl(ST_Handle handle, CTRL_Handle ctrlHandle) {
 }*/
 
 void calcTransitionPosRef(ST_Handle handle) {
-	//ST_Obj *stObj = (ST_Obj *)handle;
-
-	//_iq actualPos = stObj->pos.conv.Pos_mrev;
-
-	// Check if can keep up
-	/*if (_IQ20abs(actualPos - transitionPosRef) > _IQ20(0.5)) {
-	 return;
-	 }*/
+	ST_Obj *stObj = (ST_Obj *) handle;
 
 	prevSpeed_rps = speedRef_rps;
+
+	if (gMotorVars.CtrlState != CTRL_State_OnLine) {
+		posRef = _IQ20mpyI32(_IQ20(20.0), stObj->pos.conv.PosROCounts) + _IQtoIQ20(stObj->pos.conv.Pos_mrev);
+		transitionPosRef = posRef;
+		speedRef_rps = _IQ20(0.0);
+		currentAcc_rpsps = _IQ20(0.0);
+		return;
+	}
 
 	if (transitionPosRef < posRef) {
 		posDiff = posRef - transitionPosRef;
