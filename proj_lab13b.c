@@ -593,6 +593,7 @@ interrupt void mainISR(void) {
 //! \brief the ISR for SCI-B receive interrupt
 interrupt void sciBRxISR(void) {
 	HAL_Obj *obj = (HAL_Obj *) halHandle;
+	CTRL_Obj *ctrlObj = (CTRL_Obj *) ctrlHandle;
 	//ST_Obj *stObj = (ST_Obj *)stHandle;
 
 	dataRx = SCI_getDataNonBlocking(halHandle->sciBHandle, &success);
@@ -618,7 +619,7 @@ interrupt void sciBRxISR(void) {
 				buf[counter] = dataRx;
 				counter++;
 
-				if (gMotorVars.CtrlState == CTRL_State_OnLine) {
+				if (gMotorVars.CtrlState == CTRL_State_OnLine && EST_getState(ctrlObj->estHandle) == EST_State_OnLine) {
 					posRef = ((long) buf[1]) | ((long) buf[2] << 8) | ((long) buf[3] << 16) | ((long) buf[4] << 24);
 					maxSpeed_rps = ((long) buf[5]) | ((long) buf[6] << 8) | ((long) buf[7] << 16) | ((long) buf[8] << 24);
 				}
