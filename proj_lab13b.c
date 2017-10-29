@@ -142,8 +142,8 @@ _iq20 speedRef_rps = _IQ20(0.0);
 
 _iq20 maxSpeed_rps = _IQ20(1.0);
 _iq20 minSpeed_rps = _IQ20(0.001);
-_iq20 acc_rpsps = _IQ20(100.0);
-_iq20 dec_rpsps = _IQ20(100.0);
+_iq20 acc_rpsps = _IQ20(500.0);
+_iq20 dec_rpsps = _IQ20(500.0);
 _iq20 posDiff = _IQ20(0.0);
 _iq20 requiredDeceleration_rpsps = _IQ20(0.0);
 
